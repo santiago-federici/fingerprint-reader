@@ -1,43 +1,55 @@
-import { app, BrowserWindow } from 'electron';
-import * as path from 'path';
+import { app, BrowserWindow } from "electron";
+import * as path from "path";
 
-const isDev = process.env.NODE_ENV === 'development';
+/**
+ * Usa app.isPackaged; es más fiable que mirar NODE_ENV,
+ * porque algunos empaquetadores no definen la variable.
+ */
+const isDev = !app.isPackaged;
+
+// ---------------------------
+//  Mantener referencia global
+// ---------------------------
+let mainWindow: BrowserWindow | null = null;
 
 function createWindow(): void {
-  const mainWindow = new BrowserWindow({
-    height: 800,
-    width: 1200,
-    minHeight: 600,
-    minWidth: 800,
+  mainWindow = new BrowserWindow({
+    width: 800,
+    height: 600,
     webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      enableRemoteModule: false,
+      preload: path.join(__dirname, "preload.js"),
+      nodeIntegration: true, // si realmente lo necesitás
+      contextIsolation: false, // o true, según cómo estés manejando el contexto
     },
-    titleBarStyle: 'hiddenInset',
-    frame: true,
-    backgroundColor: '#0f0f23',
-    show: false,
   });
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-  });
+  // Mostrar solo cuando esté listo para evitar pantallazos en blanco
+  mainWindow.once("ready-to-show", () => mainWindow!.show());
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
+    mainWindow.loadURL("http://localhost:5173");
+    mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    // En el paquete, dist/ va al mismo nivel que dist-electron/
+    mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
+
+  // Liberar la referencia cuando la ventana se cierre
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
 }
 
+// --------------
+//  Ciclo de vida
+// --------------
 app.whenReady().then(createWindow);
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+app.on("window-all-closed", () => {
+  // En macOS es común dejar la app viva; en Windows/Linux la cerramos
+  if (process.platform !== "darwin") app.quit();
 });
